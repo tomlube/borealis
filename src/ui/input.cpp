@@ -11,6 +11,7 @@
 #include <aurora/rmlui.hpp>
 
 #include <RmlUi/Core.h>
+#include <SDL3/SDL_gamepad.h>
 #include <SDL3/SDL_timer.h>
 
 #include <algorithm>
@@ -195,6 +196,23 @@ bool is_gamepad(const PhysicalInput& input) noexcept {
            input.control.is<PhysicalInput::GamepadAxis>();
 }
 
+// GameCube controllers on an adapter or the NSO GameCube controller
+bool is_gamecube(const InputSource& source) noexcept {
+    if (source.kind != InputSource::Kind::Controller) {
+        return false;
+    }
+    const SDL_JoystickID joystick = aurora::input::gamepad_for_source(source.id);
+    if (joystick == 0) {
+        return false;
+    }
+    if (SDL_GetGamepadTypeForID(joystick) == SDL_GAMEPAD_TYPE_GAMECUBE) {
+        return true;
+    }
+    const Uint16 product = SDL_GetGamepadProductForID(joystick);
+    return SDL_GetGamepadVendorForID(joystick) == 0x057E &&
+           (product == 0x0337 || product == 0x2073);
+}
+
 bool is_axis(ControlId control) noexcept {
     const auto* descriptor = aurora::binding::describe_control(control);
     return descriptor != nullptr && descriptor->kind == aurora::binding::ControlKind::Axis;
@@ -215,6 +233,11 @@ struct NavContext {
     std::vector<NavMapping> mappings;
     NavSet active;
     bool chordConsumed = false;
+    bool rDown = false;
+    // R came from a GameCube controller, so Next waits for release in case Start follows.
+    bool rDeferred = false;
+    // Next is still owed for the deferred R press.
+    bool rPending = false;
 
     [[nodiscard]] bool references(SourceId source) const noexcept {
         return base != nullptr && base->references(source);
@@ -243,7 +266,7 @@ struct NavContext {
 
     MappingResult process(const InputEvent& event, bool emit) noexcept {
         auto result = state.process(event);
-        evaluate(emit);
+        evaluate(emit, is_gamecube(event.source));
         return result;
     }
 
@@ -256,20 +279,34 @@ struct NavContext {
         return r_held() && state.value(aurora::pad::controls().start) >= 0.5f;
     }
 
-    void evaluate(bool emit) noexcept {
+    void evaluate(bool emit, bool gameCube = false) noexcept {
         const auto& c = aurora::pad::controls();
         NavSet desired;
 
+        bool rTapped = false;
         if (sSettings.menuChord) {
+            const bool rHeld = r_held();
+            if (rHeld && !rDown) {
+                rDeferred = gameCube;
+                rPending = gameCube;
+            }
+            rDown = rHeld;
             if (chord_held()) {
                 chordConsumed = true;
+                rPending = false;
                 desired.insert({NavCommand::Menu, {id, c.start, 0}});
-            } else if (!r_held() && state.value(c.start) < 0.5f) {
+            } else if (!rHeld && state.value(c.start) < 0.5f) {
                 chordConsumed = false;
+            }
+            if (!rHeld) {
+                rTapped = std::exchange(rPending, false);
+                rDeferred = false;
             }
         }
         for (const auto& mapping : mappings) {
-            if (chordConsumed && (mapping.control == c.r || mapping.control == c.triggerR)) {
+            if ((chordConsumed || rDeferred) &&
+                (mapping.control == c.r || mapping.control == c.triggerR))
+            {
                 continue;
             }
             const float value = state.value(mapping.control);
@@ -304,6 +341,9 @@ struct NavContext {
                 sNavKeys.press(nav);
             }
         }
+        if (emit && rTapped && visible) {
+            send(NavCommand::Next);
+        }
         active = std::move(desired);
     }
 
@@ -313,11 +353,13 @@ struct NavContext {
         }
         active.clear();
         chordConsumed = false;
+        rDown = rDeferred = rPending = false;
     }
 
     void reset() noexcept {
         active.clear();
         chordConsumed = false;
+        rDown = rDeferred = rPending = false;
         (void)state.reset();
     }
 
