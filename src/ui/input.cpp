@@ -707,8 +707,10 @@ bool text_input_focused() noexcept {
     if (tag != "input") {
         return false;
     }
+    // RmlUi edits every input type it doesn't special-case as text, including "number".
     const auto type = focus->GetAttribute<Rml::String>("type", "text");
-    return type == "text" || type == "password";
+    return type != "radio" && type != "checkbox" && type != "range" && type != "submit" &&
+           type != "button";
 }
 
 void handle_cancel(const InputEvent& event) noexcept {
