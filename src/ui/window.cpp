@@ -1,5 +1,6 @@
 #include <borealis/ui/window.hpp>
 
+#include <borealis/ui/input.hpp>
 #include <borealis/ui/pane.hpp>
 #include <borealis/ui/ui.hpp>
 
@@ -59,6 +60,11 @@ const Rml::String kDocumentSourceSmall = R"RML(
 
 }  // namespace
 
+namespace {
+// Pixels per second at full deflection of the right stick.
+constexpr float kScrollAxisSpeed = 900.f;
+} // namespace
+
 Window::Window(Props props)
     : Document(window_document_source(props.styleSheets), false, kScopeWindow),
       mRoot(mDocument->GetElementById("window")) {
@@ -95,6 +101,17 @@ Window::Window(Props props)
                 event.StopPropagation();
             }
         }
+    });
+
+    // The right stick scrolls the rightmost pane, which holds the details of the selection
+    listen(input::kScrollAxisEvent, [this](Rml::Event& event) {
+        if (mContentComponents.empty()) {
+            return;
+        }
+        const float y = event.GetParameter("y", 0.f);
+        const float dt = event.GetParameter("dt", 0.f);
+        Rml::Element* pane = mContentComponents.back()->root();
+        pane->SetScrollTop(pane->GetScrollTop() + y * kScrollAxisSpeed * dt);
     });
 
     // Hide document after transition completion

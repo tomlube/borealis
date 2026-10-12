@@ -8,6 +8,10 @@ namespace borealis::ui::input {
 // right/down) and "dt" for analog navigation.
 inline constexpr char kNavAxisEvent[] = "navaxis";
 
+// Dispatched on the focused element with "x" and "y" from the right stick (dead-zoned, [-1, 1],
+// positive right/down) and "dt", so a window can scroll its panes.
+inline constexpr char kScrollAxisEvent[] = "scrollaxis";
+
 // Dispatched on the root element when a controller connects, disconnects or is
 // remapped, with "type" ("connected", "disconnected", "remapped") and "source" (the
 // aurora::input::SourceId).

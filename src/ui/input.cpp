@@ -510,9 +510,11 @@ NavContext* unassigned_context(SourceId source) noexcept {
     return &context;
 }
 
-// The analog stick with the largest deflection (dispatched as kNavAxisEvent)
+// The analog stick with the largest deflection, dispatched to the focused element as `event`
 class NavAxis {
 public:
+    NavAxis(const char* event, bool rightStick) noexcept : mEvent(event), mRight(rightStick) {}
+
     void refresh() noexcept {
         const Rml::Vector2f next = compute();
         if (next == mValue) {
@@ -538,7 +540,7 @@ private:
     void dispatch(Rml::Context& ctx, double dtSeconds) const noexcept {
         if (auto* target = ctx.GetFocusElement()) {
             target->DispatchEvent(
-                kNavAxisEvent, {
+                mEvent, {
                                    {"x", Rml::Variant{mValue.x}},
                                    {"y", Rml::Variant{mValue.y}},
                                    {"dt", Rml::Variant{static_cast<float>(dtSeconds)}},
@@ -554,17 +556,19 @@ private:
         return std::copysign((magnitude - kNavAxisDeadZone) / (1.0f - kNavAxisDeadZone), value);
     }
 
-    static Rml::Vector2f compute() noexcept {
+    Rml::Vector2f compute() const noexcept {
         if (!any_document_visible()) {
             return {};
         }
         Rml::Vector2f best;
         float bestMagnitude = 0.0f;
         const auto& c = aurora::pad::controls();
+        const auto x = mRight ? c.rightX : c.leftX;
+        const auto y = mRight ? c.rightY : c.leftY;
         for_each_context([&](const NavContext& context) {
             const Rml::Vector2f value{
-                dead_zoned(context.state.value(c.leftX)),
-                dead_zoned(-context.state.value(c.leftY)),  // PAD Y is positive up
+                dead_zoned(context.state.value(x)),
+                dead_zoned(-context.state.value(y)),  // PAD Y is positive up
             };
             const float magnitude = std::max(std::abs(value.x), std::abs(value.y));
             if (magnitude > bestMagnitude) {
@@ -575,10 +579,13 @@ private:
         return best;
     }
 
+    const char* mEvent;
+    bool mRight;
     Rml::Vector2f mValue;
 };
 
-NavAxis sNavAxis;
+NavAxis sNavAxis{kNavAxisEvent, false};
+NavAxis sScrollAxis{kScrollAxisEvent, true};
 
 class MenuTap {
 public:
@@ -817,11 +824,13 @@ EventResult on_event(const InputEvent& event, void*) {
     if (const auto* changed = event.payload.get_if<InputEvent::SourceChanged>()) {
         handle_source_change(event, changed->change);
         sNavAxis.refresh();
+        sScrollAxis.refresh();
         return EventResult::Pass;
     }
     if (event.payload.is<InputEvent::Cancelled>()) {
         handle_cancel(event);
         sNavAxis.refresh();
+        sScrollAxis.refresh();
         return EventResult::Pass;
     }
 
@@ -840,6 +849,7 @@ EventResult on_event(const InputEvent& event, void*) {
         break;
     }
     sNavAxis.refresh();
+    sScrollAxis.refresh();
     // Input that opened or closed a document belongs to the UI.
     return consume || visibleBefore || any_document_visible() ? EventResult::Consume :
                                                                 EventResult::Pass;
@@ -894,6 +904,7 @@ void reset() noexcept {
     sKeyboard.reset();
     sUnassigned.clear();
     sNavAxis.clear();
+    sScrollAxis.clear();
     sMenuTap.clear();
 }
 
@@ -912,6 +923,7 @@ void update() noexcept {
     sLastUpdateAt = now;
     sNavKeys.update(now);
     sNavAxis.update(*ctx, dtSeconds);
+    sScrollAxis.update(*ctx, dtSeconds);
 }
 
 }  // namespace borealis::ui::input
