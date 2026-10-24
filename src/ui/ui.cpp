@@ -401,7 +401,7 @@ NavCommand nav_command(const Rml::Event& event) noexcept {
         return NavCommand::None;
     }
     const int command = event.GetParameter<int>("command", 0);
-    if (command <= static_cast<int>(NavCommand::None) || command > static_cast<int>(NavCommand::Menu)) {
+    if (command <= static_cast<int>(NavCommand::None) || command > static_cast<int>(NavCommand::Action)) {
         return NavCommand::None;
     }
     return static_cast<NavCommand>(command);

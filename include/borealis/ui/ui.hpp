@@ -28,7 +28,7 @@ enum class NavCommand {
     Confirm,   // A
     Cancel,    // B
     Menu,      // Back/Minus, or R + Start
-    Action,    // X
+    Action,    // X; keep last, nav_command() range-checks against it
 };
 
 inline constexpr char kNavCommandEvent[] = "navcommand";
