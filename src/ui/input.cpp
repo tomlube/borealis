@@ -233,11 +233,12 @@ struct NavContext {
     std::vector<NavMapping> mappings;
     NavSet active;
     bool chordConsumed = false;
-    bool rDown = false;
-    // R came from a GameCube controller, so Next waits for release in case Start follows.
-    bool rDeferred = false;
-    // Next is still owed for the deferred R press.
-    bool rPending = false;
+    // PADButton masks of chord buttons
+    uint16_t chordDown = 0;
+    // Pressed on a GameCube controller, so their nav waits for release in case the rest follow.
+    uint16_t chordDeferred = 0;
+    // Nav still owed for deferred presses.
+    uint16_t chordPending = 0;
 
     [[nodiscard]] bool references(SourceId source) const noexcept {
         return base != nullptr && base->references(source);
@@ -270,44 +271,80 @@ struct NavContext {
         return result;
     }
 
-    [[nodiscard]] bool r_held() const noexcept {
+    struct ChordButton {
+        uint16_t bit;
+        ControlId digital;
+        // Analog trigger for L and R
+        ControlId analog;
+    };
+
+    [[nodiscard]] static std::vector<ChordButton> chord_buttons() noexcept {
         const auto& c = aurora::pad::controls();
-        return state.value(c.r) >= 0.5f || state.value(c.triggerR) >= kAxisPressThreshold;
+        std::vector<ChordButton> buttons;
+        for (uint16_t bit = 1; bit != 0; bit <<= 1) {
+            if ((sSettings.menuChord & bit) == 0) {
+                continue;
+            }
+            const ControlId digital = aurora::pad::control_for_button(bit);
+            if (digital == kInvalidControlId) {
+                continue;
+            }
+            const ControlId analog = bit == PAD_TRIGGER_R ? c.triggerR :
+                                     bit == PAD_TRIGGER_L ? c.triggerL :
+                                                            kInvalidControlId;
+            buttons.push_back({bit, digital, analog});
+        }
+        return buttons;
     }
 
-    [[nodiscard]] bool chord_held() const noexcept {
-        return r_held() && state.value(aurora::pad::controls().start) >= 0.5f;
+    [[nodiscard]] bool held(const ChordButton& button) const noexcept {
+        return state.value(button.digital) >= 0.5f ||
+               (button.analog != kInvalidControlId &&
+                   state.value(button.analog) >= kAxisPressThreshold);
     }
 
     void evaluate(bool emit, bool gameCube = false) noexcept {
-        const auto& c = aurora::pad::controls();
         NavSet desired;
 
-        bool rTapped = false;
-        if (sSettings.menuChord) {
-            const bool rHeld = r_held();
-            if (rHeld && !rDown) {
-                rDeferred = gameCube;
-                rPending = gameCube;
+        const auto chord = chord_buttons();
+        uint16_t tapped = 0;
+        if (!chord.empty()) {
+            uint16_t down = 0;
+            for (const auto& button : chord) {
+                if (held(button)) {
+                    down |= button.bit;
+                }
             }
-            rDown = rHeld;
-            if (chord_held()) {
+            if (gameCube) {
+                chordDeferred |= down & ~chordDown;
+                chordPending |= down & ~chordDown;
+            }
+            chordDown = down;
+            if (down == sSettings.menuChord) {
                 chordConsumed = true;
-                rPending = false;
-                desired.insert({NavCommand::Menu, {id, c.start, 0}});
-            } else if (!rHeld && state.value(c.start) < 0.5f) {
+                chordPending = 0;
+                desired.insert({NavCommand::Menu, {id, chord.front().digital, 0}});
+            } else if (down == 0) {
                 chordConsumed = false;
             }
-            if (!rHeld) {
-                rTapped = std::exchange(rPending, false);
-                rDeferred = false;
-            }
+            tapped = chordPending & ~down;
+            chordPending &= down;
+            chordDeferred &= down;
         }
+        std::vector<NavCommand> tappedCommands;
         for (const auto& mapping : mappings) {
-            if ((chordConsumed || rDeferred) &&
-                (mapping.control == c.r || mapping.control == c.triggerR))
-            {
-                continue;
+            const auto button = std::ranges::find_if(chord, [&](const ChordButton& b) {
+                return mapping.control == b.digital ||
+                       (b.analog != kInvalidControlId && mapping.control == b.analog);
+            });
+            if (button != chord.end()) {
+                if ((tapped & button->bit) != 0 && mapping.positive != NavCommand::None) {
+                    tappedCommands.push_back(mapping.positive);
+                    tapped &= ~button->bit;
+                }
+                if (chordConsumed || (chordDeferred & button->bit) != 0) {
+                    continue;
+                }
             }
             const float value = state.value(mapping.control);
             if (!is_axis(mapping.control)) {
@@ -341,8 +378,10 @@ struct NavContext {
                 sNavKeys.press(nav);
             }
         }
-        if (emit && rTapped && visible) {
-            send(NavCommand::Next);
+        if (emit && visible) {
+            for (const auto command : tappedCommands) {
+                send(command);
+            }
         }
         active = std::move(desired);
     }
@@ -353,13 +392,13 @@ struct NavContext {
         }
         active.clear();
         chordConsumed = false;
-        rDown = rDeferred = rPending = false;
+        chordDown = chordDeferred = chordPending = 0;
     }
 
     void reset() noexcept {
         active.clear();
         chordConsumed = false;
-        rDown = rDeferred = rPending = false;
+        chordDown = chordDeferred = chordPending = 0;
         (void)state.reset();
     }
 

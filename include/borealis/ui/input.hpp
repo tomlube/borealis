@@ -20,7 +20,7 @@ inline constexpr char kControllerChangeEvent[] = "controllerchange";
 struct Settings {
     // Defaults to controller Back until a Menu control is bound.
     aurora::binding::ControlId menuControl = aurora::binding::kInvalidControlId;
-    bool menuChord = false; // R + Start for Menu
+    uint16_t menuChord = 0; // PADButton mask held together for Menu, 0 for none
     bool menuTap = false; // Three-finger tap for Menu
 };
 
