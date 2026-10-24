@@ -23,6 +23,9 @@ public:
         std::function<void(uint64_t)> onPressed;
         std::function<bool(uint64_t)> isSelected;
         std::function<bool(uint64_t)> isDisabled;
+        // X on a focused row
+        std::function<void(uint64_t)> onAction;
+        std::function<void(uint64_t)> onBlur;
     };
 
     List(Rml::Element* parent, Props props);

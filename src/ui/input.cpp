@@ -415,6 +415,7 @@ private:
             {c.leftY, NavCommand::Up, NavCommand::Down},
             {c.a, NavCommand::Confirm},
             {c.b, NavCommand::Cancel},
+            {c.x, NavCommand::Action},
             {c.l, NavCommand::Previous},
             {c.triggerL, NavCommand::Previous},
             {ui.previous, NavCommand::Previous},
@@ -486,7 +487,7 @@ std::shared_ptr<const BindingSet> keyboard_bindings() noexcept {
     const auto keyboard = aurora::input::keyboard_source().id;
     const auto& c = aurora::pad::controls();
     const auto& ui = ui_controls();
-    const std::array<std::pair<SDL_Scancode, ControlId>, 10> keys{{
+    const std::array<std::pair<SDL_Scancode, ControlId>, 11> keys{{
         {SDL_SCANCODE_UP, c.up},
         {SDL_SCANCODE_DOWN, c.down},
         {SDL_SCANCODE_LEFT, c.left},
@@ -494,6 +495,7 @@ std::shared_ptr<const BindingSet> keyboard_bindings() noexcept {
         {SDL_SCANCODE_RETURN, c.a},
         {SDL_SCANCODE_KP_ENTER, c.a},
         {SDL_SCANCODE_ESCAPE, c.b},
+        {SDL_SCANCODE_DELETE, c.x},
         {SDL_SCANCODE_PAGEUP, ui.previous},
         {SDL_SCANCODE_PAGEDOWN, ui.next},
         {SDL_SCANCODE_F1, ui.menu},

@@ -160,6 +160,12 @@ std::unique_ptr<List::Row> List::create_row(const Item& item) {
     row->button->root()->SetClass("ui-list-row", true);
     row->button->Component::listen(row->button->root(), Rml::EventId::Focus,
         [this, key = item.key](Rml::Event&) { mActiveKey = key; });
+    row->button->Component::listen(row->button->root(), Rml::EventId::Blur,
+        [this, key = item.key](Rml::Event&) {
+            if (mProps.onBlur) {
+                mProps.onBlur(key);
+            }
+        });
     row->button->on_pressed([this, key = item.key] {
         mActiveKey = key;
         if (mProps.onPressed) {
@@ -324,6 +330,15 @@ void List::update_pending_focus() {
 
 void List::handle_nav_command(Rml::Event& event) {
     const NavCommand command = nav_command(event);
+    if (command == NavCommand::Action) {
+        Row* focusedRow = row_from_element(event.GetTargetElement());
+        if (focusedRow != nullptr && mProps.onAction) {
+            mActiveKey = focusedRow->key;
+            mProps.onAction(focusedRow->key);
+            event.StopPropagation();
+        }
+        return;
+    }
     if (command != NavCommand::Down && command != NavCommand::Up) {
         return;
     }
